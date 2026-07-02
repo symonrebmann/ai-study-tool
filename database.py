@@ -1,6 +1,6 @@
 import sqlite3
 from parsing import extract_question_blocks, extract_response_blocks
-from config import TEST_MODE
+import config
 
 import logging
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ def critical_handler(func):
             return result
         except Exception:
             logger.critical("Database operation failed in %s.", func.__name__, exc_info=True)
-            if TEST_MODE:
+            if config.TEST_MODE:
                 raise
             print("Exiting.")
             exit()
