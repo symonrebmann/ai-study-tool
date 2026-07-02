@@ -3,16 +3,12 @@ from google import genai
 from dotenv import load_dotenv
 import os
 from datetime import datetime
-from database import entry_responses, cursor
+from database import Database
 
-load_dotenv(".env.txt")
+import logging
+logger = logging.getLogger(__name__)
 
-api_key = os.environ.get("GEMINI_API_KEY")
-if not api_key:
-    print("Error: GEMINI_API_KEY not set. Check your .env file.")
-    exit()
-
-client = genai.Client(api_key=api_key)
+from client import client
 
 def grade_answers(answers: str) -> tuple[str, str]:
     prompt = f"""
@@ -20,9 +16,9 @@ def grade_answers(answers: str) -> tuple[str, str]:
     For each grade please give a reason and if it's a wrong answer offer what went wrong.
     Remember to keep it in a format that's understandable in a Microsoft notepad document.
     As well, if there are equally wrong topics just put the first alphabetical topic (at the same amount wrong) first in the chain relatively.
-    Please label the weak topics, if there are any, as there respective grades. If more than one question of the same topic is missed write the topic name and grade on seperate lines equal to the distribution of the grade.
+    Please label the weak topics, if there are any, as there respective grades. If more than one question of the same topic is missed write the topic name and grade on separate lines equal to the distribution of the grade.
     If all answers are correct do not include any Weak Topics section and don't include the section title.
-    Start directly with topic title listing all covered topics seperated by commas in the order of which they are asked in each question at the top of your response.
+    Start directly with topic title listing all covered topics separated by commas in the order of which they are asked in each question at the top of your response.
     As well, include the topic title directly above each question. When listing the topic above each question JUST list that question's topic.
     As well, please list the question difficulty above each question a shown in the example below.
     Do not include any extra introduction or explanation other than what's listed.
@@ -41,17 +37,22 @@ def grade_answers(answers: str) -> tuple[str, str]:
     Questions and Answers:
     {answers}
     """
-
-    try:
-        response = client.models.generate_content(
-        model = "gemini-3.5-flash",
-        contents = prompt
-        )
-    except Exception as e:
-        if "503" in str(e):
-            print("Gemini is currently unavailable due to high demand. Please try again in a moment.")
-        else:
-            print(f"Generation failed: {e}")
+    while True:
+        try:
+            response = client.models.generate_content(
+            model = "gemini-3.5-flash",
+            contents = prompt
+            )
+            break
+        except Exception as e:
+            if "503" in str(e):
+                logger.warning("Gemini is currently unavailable due to high demand. Please try again in a moment.")
+            else:
+                logger.error("Generation failed.", exc_info=True)
+            retry = input("Would you like to try generating again? (y/n): ").strip().lower()
+            if retry != 'y':
+                print("Exiting application.")
+                exit()
 
     parts_grade = response.text.split("Weak Topics:")
     grading = parts_grade[0]
@@ -63,7 +64,7 @@ def grade_answers(answers: str) -> tuple[str, str]:
 
     return grading, weak_topics
 
-def get_answer_document() -> tuple[str, str]:
+def get_answer_document(db: Database) -> tuple[str, str]:
 
     answered_documents = []
 
@@ -75,6 +76,7 @@ def get_answer_document() -> tuple[str, str]:
     fail_count_warn = 0
     answers = None
     already_graded_confirmed = False
+    incorrect_formatting = False
 
     for file in file_names:
         if "questions" in file:
@@ -93,9 +95,9 @@ def get_answer_document() -> tuple[str, str]:
             if answered_document == answered_index + 1:
                 while fail_manual_entry < 3:
                     manual_entry = input("Please enter the full name of the notes document (including the extension): ")
-                    answered_documents.append(manual_entry)
-                    extension = os.path.splitext(answered_documents[answered_document - 1])[1]
+                    extension = os.path.splitext(manual_entry)[1]
                     if extension == ".txt":
+                        answered_documents.append(manual_entry)
                         break
                     else:
                         print("The file was not recognized. Please try again.")
@@ -105,7 +107,7 @@ def get_answer_document() -> tuple[str, str]:
                     print("Too many failed attempts. Please try another document.")
                     continue
         except (ValueError, IndexError):
-            print("The document chosen was not recgonized. Please try again.")
+            print("The document chosen was not recognized. Please try again.")
             fail_count_answered_document +=1
             continue
         try:
@@ -123,14 +125,11 @@ def get_answer_document() -> tuple[str, str]:
                 if document_confirm == "y":
                     session_id = int(lines[0].replace("Session ID:", "").strip())
 
-                    cursor.execute("""
-                        SELECT COUNT(*)
-                        FROM responses
-                        JOIN questions ON questions.id = responses.question_id
-                        WHERE questions.session_id = ?
-                    """, (session_id,))
+                    count = db.check_graded(session_id)
 
-                    count = cursor.fetchone()[0]
+                    if count is None:
+                        print("Could not retrieve previous grade information due to a local database issue.")
+                        count = 0
 
                     if count > 0:
                         while fail_count_warn < 3:
@@ -138,7 +137,12 @@ def get_answer_document() -> tuple[str, str]:
                             if warn_response == "y":
                                 name_without_suffix = os.path.splitext(answered_documents[answered_document - 1])[0]
                                 file_parts = name_without_suffix.split(" ")
-                                questions_index = file_parts.index("questions")
+                                try:
+                                    questions_index = file_parts.index("questions")
+                                except Exception:
+                                    print("Incorrect file name format; ensure the file has not been renamed. Please try another file.")
+                                    incorrect_formatting = True
+                                    break
                                 subject = " ".join(file_parts[:questions_index])
                                 return answers, subject
                             elif warn_response == "n":
@@ -150,10 +154,20 @@ def get_answer_document() -> tuple[str, str]:
                         if fail_count_warn >= 3:
                             print("Too many failed attempts. Exiting.")
                             exit()
-                    if not already_graded_confirmed:
+                    if not already_graded_confirmed and not incorrect_formatting:
                         name_without_suffix = os.path.splitext(answered_documents[answered_document - 1])[0]
                         file_parts = name_without_suffix.split(" ")
-                        questions_index = file_parts.index("questions")
+                        try:
+                            questions_index = file_parts.index("questions")
+                        except Exception:
+                            print("Incorrect file name format; ensure the file has not been renamed. Please try another file.")
+                            fail_count_answered_document = 0
+                            fail_count_read_document = 0
+                            fail_manual_entry = 0
+                            fail_count_warn = 0
+                            answers = None
+                            already_graded_confirmed = False
+                            break
                         subject = " ".join(file_parts[:questions_index])
                         return answers, subject
                     else:
@@ -163,6 +177,7 @@ def get_answer_document() -> tuple[str, str]:
                         fail_count_warn = 0
                         answers = None
                         already_graded_confirmed = False
+                        incorrect_formatting = False
                         break
                 elif document_confirm == "n":
                     fail_count_answered_document = 0
@@ -178,8 +193,9 @@ def get_answer_document() -> tuple[str, str]:
                 print("Too many failed attempts. Exiting.")
                 exit()
             continue
-        except:
-            print("Notes extractions failed. Please try another notes document.")
+        except (FileNotFoundError, OSError) as e:
+            logger.warning("Failed to open document: %s", e)
+            print("Notes extraction failed. Please try another notes document.")
             fail_count_read_document += 1
     if fail_count_answered_document >= 3 or fail_count_read_document >= 3:
         print("Too many failed attempts. Exiting.")
@@ -188,11 +204,11 @@ def get_answer_document() -> tuple[str, str]:
         print("Too many failed attempts. Exiting.")
         exit()
 
-def run_grade() -> None:
+def run_grade(db: Database) -> None:
     
     today = datetime.now().strftime("%Y-%m-%d-%I-%M-%p")
 
-    answers, subject = get_answer_document()
+    answers, subject = get_answer_document(db)
 
     grade, weak_topics = grade_answers(answers)
 
@@ -205,7 +221,7 @@ def run_grade() -> None:
     header = f"Session ID: {session_id}\n\n"
     final_grade_output = header + grade 
 
-    entry_responses(grade, session_id)
+    db.insert_responses(grade, session_id)
 
     with open(f"graded {subject} answers {today}.txt", "w") as f:
         f.write(final_grade_output)

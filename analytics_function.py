@@ -1,7 +1,10 @@
 
 from datetime import datetime
 
-from database import cursor
+from database import Database
+
+import logging
+logger = logging.getLogger(__name__)
 
 def get_stats(records: list[dict[str, any]]) -> dict[str, any] | None:
     total = len(records)
@@ -96,21 +99,19 @@ def generate_report(topic_groups: dict[str, any]) -> str:
             lines.append(f"     {entry['date']}: {bar} {entry['score']:.1f}  {g}")
     return "\n".join(lines)
 
-def run_analytics() -> None:
+def run_analytics(db: Database) -> None:
   
     today = datetime.now().strftime("%Y-%m-%d-%I-%M-%p")
 
     topic_groups = {}
 
-    cursor.execute("""
-        SELECT sessions.date, questions.question_topic, responses.grade
-        FROM sessions
-        JOIN questions ON sessions.id = questions.session_id
-        JOIN responses ON questions.id = responses.question_id
-        ORDER BY sessions.date 
-        """)
-        
-    for row in cursor.fetchall():
+    rows = db.fetch_topic_grades()
+
+    if not rows:
+        print("No data found. Grade a session first to proceed.")
+        exit()
+
+    for row in rows:
         date = row[0]
         topic = row[1]
         grade = row[2]
@@ -140,7 +141,6 @@ def run_analytics() -> None:
     with open(f"analytics report {today}.txt", "w", encoding="utf-8") as f:
         f.write(report)
         
-
     print(f"Analytics saved to 'analytics report {today}.txt'")
 
 if __name__ == "__main__":

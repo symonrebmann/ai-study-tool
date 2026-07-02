@@ -1,43 +1,45 @@
-from database import cursor
+from database import Database
 import math
+from config import SESSIONS_PER_PAGE
+from datetime import datetime
 
-def get_session_list() -> list[dict]:
+import logging
+logger = logging.getLogger(__name__)
+
+def get_session_list(db: Database) -> list[dict]:
     session_list = []
 
-    cursor.execute("""
-        SELECT sessions.question_type, sessions.difficulty, sessions.date, sessions.id
-        FROM sessions                   
-        ORDER BY sessions.date
-        """)
-                            
-    for row in cursor.fetchall():
+    sessions = db.fetch_sessions()
+
+    if not sessions:
+        print("No sessions found in database. Complete a full session first.")
+        exit()
+
+    for row in sessions:
         question_type = row[0].lower()
         difficulty = row[1]
         date = row[2]
         session_id = row[3]
 
-        cursor.execute("""
-            SELECT session_subjects.subject
-            FROM session_subjects
-            WHERE session_subjects.session_id = ?
-        """, (session_id,))
+        subjects_raw = db.fetch_subjects(session_id)
 
-        subjects = [row[0].lower() for row in cursor.fetchall()]
+        if not subjects_raw:
+            logger.warning("No subjects found for session '%s'", session_id)
+            continue
+        subjects = [row[0].lower() for row in subjects_raw]
 
-        cursor.execute("""
-            SELECT questions.question_number, responses.grade
-            FROM questions
-            JOIN responses ON questions.id = responses.question_id
-            WHERE questions.session_id = ?
-        """, (session_id,))
+
+        rows_scores = db.fetch_session_scores(session_id)
 
         scores = []
 
-        rows = cursor.fetchall()
+        if not rows_scores:
+            print(f"No responses found for session {session_id}. Please finish the session or remove it.")
+            continue
 
-        total_questions = len(rows)
+        total_questions = len(rows_scores)
 
-        for row in rows:
+        for row in rows_scores:
 
             if row[1] == "Correct":
                 score = 1.0
@@ -47,11 +49,7 @@ def get_session_list() -> list[dict]:
                 score = 0.0
             scores.append(score)
 
-        try:
-            grade_avg = sum(scores) / len(scores)
-        except ZeroDivisionError:
-            print("No results found. Please try again once there is at least one graded session.")
-            exit()
+        grade_avg = sum(scores) / len(scores)
 
         session = {
             "date": date,
@@ -65,21 +63,26 @@ def get_session_list() -> list[dict]:
         session_list.append(session)
 
     session_list.sort(key=lambda x: x["date"])
+    logger.debug("get_session_list returned %s sessions", len(session_list))
+
+    if not session_list:
+        print("No valid sessions found. Please complete a graded session or remove incomplete ones.")
+        exit()
 
     return session_list
 
-def get_session_preview():
+def get_session_preview(db: Database):
     
-    session_list = get_session_list()
+    session_list = get_session_list(db)
 
-    page_total = math.ceil(len(session_list)/10)
+    page_total = math.ceil(len(session_list)/SESSIONS_PER_PAGE)
 
     current_page = 1
 
     while True:
     
-        start = (current_page - 1) * 10
-        end = min(start + 10, len(session_list))
+        start = (current_page - 1) * SESSIONS_PER_PAGE
+        end = min(start + SESSIONS_PER_PAGE, len(session_list))
 
         print(f"Session Previews Page {current_page}/{page_total}")
 
@@ -129,57 +132,54 @@ def get_session_preview():
                         get_full_session(session_list[session_response - 1], text_subject)
                         break
                     else:
-                        print("Invalid response. Please try again.")
+                        print("Invalid session. Please try again.")
                 except ValueError:
                     print("Invalid response. Please try again.")
 
-def get_full_session(session_prev: dict[str, any], text_subject: str):
+def get_full_session(db: Database, session_prev: dict[str, any], text_subject: str):
 
     session = session_prev
-
     session_id = session["session_id"]
+    
+    category_row = db.fetch_session_category(session_id)
 
-    cursor.execute("""
-        SELECT sessions.question_category
-        FROM sessions
-        WHERE sessions.id = ?
-        """, (session_id,))
-                            
-    fetch_category = cursor.fetchone()
+    if not category_row:
+        logger.warning("Failed to fetch question category for session %s.", session_id)
+        print("Could not load session data. Please try another session.")
+        return
+    
+    category = category_row[0]
 
-    question_category = fetch_category[0]
+    session["question_category"] = category
 
-    session["question_category"] = question_category
-
-    cursor.execute("""
-        SELECT questions.id, questions.question_number, questions.question_topic, questions.question_text
-        FROM questions  
-        WHERE questions.session_id = ?
-        ORDER BY question_number
-    """, (session_id,))
+    question_info = db.fetch_questions(session_id)
     
     question_ids = []
     question_numbers = []
     question_topics = []
     question_texts = []
 
-    for row in cursor.fetchall():
+    if not question_info:
+        logger.warning("Failed to fetch question information for session %s.", session_id)
+        print("Could not load session data. Please try another session.")
+        return
+
+    for row in question_info:
         question_ids.append(row[0])
         question_numbers.append(row[1])
         question_topics.append(row[2])
         question_texts.append(row[3])
-
-    placeholders = ",".join("?" * len(question_ids))
-    cursor.execute(f"""
-        SELECT responses.answer, responses.grade, responses.explanation
-        FROM responses
-        WHERE responses.question_id IN ({placeholders})
-        ORDER BY responses.question_id
-    """, tuple(question_ids))
+    
+    responses_raw = db.fetch_responses(question_ids)
 
     responses = []
 
-    for row in cursor.fetchall():
+    if not responses_raw:
+        logger.warning("Failed to fetch response information for session %s.", session_id)
+        print("Could not load session data. Please try another session.")
+        return
+
+    for row in responses_raw:
 
         response = {
             "answer": row[0],
@@ -209,6 +209,21 @@ def get_full_session(session_prev: dict[str, any], text_subject: str):
     E: {responses[x]["explanation"]}
     """)
 
+    fail_count_add_fav = 0
+    
+    while fail_count_add_fav < 3:
+        add_fav = input("Would you like to add a question to your favorites? (y/n) ").lower().strip()
+        if add_fav == "y":
+            add_favorite(db, question_ids)
+            break
+        elif add_fav == "n":
+            break
+        else:
+            print("Invalid response. Please input a valid response (y/n).")
+            fail_count_add_fav += 1
+    if fail_count_add_fav >= 3:
+        print("Too many failed attempts. Moving on.")
+
     fail_count_go_on = 0
 
     while fail_count_go_on < 3:
@@ -223,6 +238,56 @@ def get_full_session(session_prev: dict[str, any], text_subject: str):
     if fail_count_go_on >= 3:
         print("Too many failed attempts. Exiting.")
         exit()
+
+def add_favorite(db: Database, question_ids: list[int]) -> None:
+
+    while True:
+        fail_count_favorite = 0
+        add_another = False
+
+        while fail_count_favorite < 3:
+            try:
+                question_number = int(input("Please enter the corresponding question number. ").strip())
+                question_id = question_ids[question_number - 1]
+
+                already_favorited = db.check_favorite(question_id)
+
+                if already_favorited:
+                    print(f"Question {question_number} is already in your favorites.")
+                elif already_favorited is None:
+                    print("Could not check favorites. Please try again.")
+                else:
+                    date = datetime.now().strftime("%Y-%m-%d")
+                    note = input("Add a note (optional, press Enter to skip): ").strip()
+                    if not note:
+                        note = None
+                    result = db.insert_favorites(question_id, date, note)
+                    if result:
+                        print(f"Question {question_number} added to favorites.")
+                    else:
+                        print(f"Could not save favorite for question {question_number}.")
+                fail_count_another = 0
+                while fail_count_another < 3:
+                    another_response = input("Would you like to add another favorite? (y/n) ").lower().strip()
+                    if another_response == "y":
+                        add_another = True
+                        break
+                    elif another_response == "n":
+                        return
+                    else:
+                        print("The question chosen was not recognized. Please try again.")
+                        fail_count_another += 1
+                if fail_count_another >= 3:
+                    print(f"Too many failed attempts. Moving on.")
+                    return
+                if add_another:
+                    break
+            except (ValueError, IndexError):
+                print("The question chosen was not recognized. Please try again.")
+                fail_count_favorite += 1 
+        if fail_count_favorite >= 3:
+            print("Too many failed attempts. Moving on.")
+            return
 
 if __name__ == "__main__":
     get_session_preview()

@@ -1,20 +1,15 @@
 
-from google import genai
-from dotenv import load_dotenv
 import os
 from datetime import datetime
-from database import entry_sessions, entry_questions, entry_session_subjects, cursor
+from database import Database
 import pdfplumber
 import PIL.Image
 
-load_dotenv(".env.txt")
+import logging
+logger = logging.getLogger(__name__)
 
-api_key: str | None = os.environ.get("GEMINI_API_KEY")
-if not api_key:
-    print("Error: GEMINI_API_KEY not set. Check your .env file.")
-    exit()
-
-client = genai.Client(api_key=api_key)
+from client import client
+from config import MODEL, MAX_DOCUMENTS, MAX_WEAK_TOPICS
 
 def generate_questions(notes: str, weak_topics: str, ai_weak_topic_text: str, question_amount: int, ai_instructions: str, essay_topic_instruction: str | None, question_difficulty_prompt: str) -> str:
     prompt = f"""
@@ -27,7 +22,7 @@ def generate_questions(notes: str, weak_topics: str, ai_weak_topic_text: str, qu
     Question Type is 'Problem-Solving', do NOT under any circumstances generate Multiple Choice, 
     True/False, or Matching questions, even if they are mentioned in the difficulty description.
     For each question, and provide a space for answering but do not include the answer.
-    Start directly with topic title listing all covered topics seperated by commas in the order of which they are asked in each question at the top of your response. Topic names must be short—a maximum of 5 words. Do not combine multiple topics (such as x and z) as one topic.
+    Start directly with topic title listing all covered topics separated by commas in the order of which they are asked in each question at the top of your response. Topic names must be short—a maximum of 5 words. Do not combine multiple topics (such as x and z) as one topic.
     As well, include the topic title directly above each question. When listing the topic above each question JUST list that question's topic. The Topic Title above each question must contain exactly one topic with no commas.
     As well, please list the question difficulty above each question a shown in the example below.
     The parts in brackets such as "[topic]," "[difficulty]," "[question]," and "[answer space]" are place holders. Replace those with the relevant information and DONT leave the brackets.
@@ -43,18 +38,24 @@ def generate_questions(notes: str, weak_topics: str, ai_weak_topic_text: str, qu
     {ai_weak_topic_text}
     {weak_topics}
     """
-    try:
-        response = client.models.generate_content(
-            model = "gemini-3.5-flash",
-            contents = prompt
-        )
-    except Exception as e:
-        if "503" in str(e):
-            print("Gemini is currently unavailable due to high demand. Please try again in a moment.")
-        else:
-            print(f"Generation failed: {e}")
 
-    return response.text
+    while True:
+        try:
+            response = client.models.generate_content(
+                model = MODEL,
+                contents = prompt
+            )
+            logger.debug("Prompt length: %s chars", len(prompt))
+            return response
+        except Exception as e:
+            if "503" in str(e):
+                logger.warning("Gemini is currently unavailable due to high demand. Please try again in a moment.")
+            else:
+                logger.error("Generation failed.", exc_info=True)
+            retry = input("Would you like to try generating again? (y/n): ").strip().lower()
+            if retry != 'y':
+                print("Exiting application.")
+                exit()
 
 def get_question_type() -> tuple[str, str | None, str]:
 
@@ -88,7 +89,7 @@ def get_question_type() -> tuple[str, str | None, str]:
                 break
             else:
                 fail_count_question_type += 1
-                print("The question format chosen was not recgonized. Please try again.")
+                print("The question format chosen was not recognized. Please try again.")
                 if fail_count_question_type >= 3:
                     print("Too many failed attempts. Exiting.")
                     exit()
@@ -119,7 +120,6 @@ def get_question_type() -> tuple[str, str | None, str]:
                 if isinstance(content, list):
                     question_type = content[response_type - 1]
                     if question_type.split(".")[1].strip() == "Back":
-                        go_back = True
                         break
                     return get_instructions(question_type), question_category, question_type
                 elif isinstance(content, dict):
@@ -130,7 +130,6 @@ def get_question_type() -> tuple[str, str | None, str]:
                         response_subtype = int(input("Please choose one of the above question subtypes by entering the corresponding number (e.g. 1, 2, 3). ").strip())
                         question_type = content["1. Essay"][response_subtype - 1]
                         if question_type.split(".")[1].strip() == "Back":
-                            go_back = True
                             continue
                         question_category = "Essay"
                         return get_instructions(question_type), question_category, question_type
@@ -140,7 +139,6 @@ def get_question_type() -> tuple[str, str | None, str]:
                         response_subtype = int(input("Please choose one of the above question subtypes by entering the corresponding number (e.g. 1, 2, 3). ").strip())
                         question_type = content["2. Free Response"][response_subtype - 1]
                         if question_type.split(".")[1].strip() == "Back":
-                            go_back = True
                             continue
                         question_category = "Free Response"
                         return get_instructions(question_type), question_category, question_type
@@ -154,13 +152,12 @@ def get_question_type() -> tuple[str, str | None, str]:
                         question_type = "5. Scenario/Case Study"
                         return get_instructions(question_type), question_category, question_type
                     elif keys[response_type - 1].split(".")[1].strip() == "Back":
-                        go_back = True
                         break
                     else:
-                        print("The question type chosen was not recgonized. Please try again.")
+                        print("The question type chosen was not recognized. Please try again.")
                         fail_count_question_type += 1
             except (ValueError, IndexError):
-                print("The question type chosen was not recgonized. Please try again.")
+                print("The question type chosen was not recognized. Please try again.")
                 fail_count_question_type += 1
             if fail_count_question_type >= 3:
                 print("Too many failed attempts. Exiting.")
@@ -363,7 +360,7 @@ the student to reconcile apparent contradictions or solve highly complex, abstra
 
     return difficulty_prompt
 
-def get_notes_document() -> tuple[str, str, str, list[str]]:
+def get_notes_document(db: Database) -> tuple[str, str, str, list[str]]:
 
     topic_groups = {}
     topic_averages = []
@@ -382,7 +379,7 @@ def get_notes_document() -> tuple[str, str, str, list[str]]:
         if len(list(file_name_parts & note_check)) >= 1:
             notes_documents.append(file)
 
-    for i in range(5):
+    for _ in range(MAX_DOCUMENTS):
         fail_count_notes_document = 0
         fail_count_read_document = 0
         fail_manual_entry = 0
@@ -404,10 +401,10 @@ def get_notes_document() -> tuple[str, str, str, list[str]]:
                 if notes_document == notes_index + 1:
                     while fail_manual_entry < 3:
                         manual_entry = input("Please enter the full name of the notes document (including the extension): ")
-                        notes_documents.append(manual_entry)
-                        name_without_suffix = os.path.splitext(notes_documents[notes_document - 1])[0]
-                        extension = os.path.splitext(notes_documents[notes_document - 1])[1]
+                        name_without_suffix = os.path.splitext(manual_entry)[0]
+                        extension = os.path.splitext(manual_entry)[1]
                         if extension in {".txt", ".pdf", ".png", ".jpg", ".jpeg"}:
+                            notes_documents.append(manual_entry)
                             break
                         else:
                             print("The file was not recognized. Please try again.")
@@ -415,13 +412,12 @@ def get_notes_document() -> tuple[str, str, str, list[str]]:
                             continue
                     if fail_manual_entry >= 3:
                         print("Too many failed attempts. Please try another notes document.")
-                        notes_documents.remove(manual_entry)
                         continue
                 else:
                     name_without_suffix = os.path.splitext(notes_documents[notes_document - 1])[0]
                     extension = os.path.splitext(notes_documents[notes_document - 1])[1]
             except (ValueError, IndexError):
-                print("The document chosen was not recgonized. Please try again.")
+                print("The document chosen was not recognized. Please try again.")
                 fail_count_notes_document +=1
                 continue
             try:
@@ -430,7 +426,8 @@ def get_notes_document() -> tuple[str, str, str, list[str]]:
                         with open(f"{notes_documents[notes_document - 1]}", "r") as f:
                             notes = f.read()
                         break
-                    except:
+                    except (FileNotFoundError, OSError) as e:
+                        logger.warning("Failed to open document: %s", e)
                         print("Notes extractions failed. Please try another notes document.")
                         fail_count_read_document += 1
                 elif extension == ".pdf":
@@ -440,26 +437,38 @@ def get_notes_document() -> tuple[str, str, str, list[str]]:
                             for page in pdf.pages:
                                 notes += page.extract_text()
                         break
-                    except:
+                    except (FileNotFoundError, OSError) as e:
+                        logger.warning("Failed to open document: %s", e)
                         print("Notes extractions failed. Please try another notes document.")
                         fail_count_read_document += 1
                 elif extension in {".png", ".jpg", ".jpeg"}:
-                    try:
-                        image = PIL.Image.open(notes_documents[notes_document - 1])
+                    while True:
                         try:
-                            response = client.models.generate_content(
-                                model = "gemini-3.5-flash",
-                                contents = [image, "Extract all text from this image exactly as it appears. Return only the extracted text with no introduction, explanation, or commentary."]
-                            )
-                        except Exception as e:
-                            if "503" in str(e):
-                                print("Gemini is currently unavailable due to high demand. Please try again in a moment.")
-                            else:
-                                print(f"Generation failed: {e}")
-                        notes = response.text
-                    except:
-                        print("Notes extractions failed. Please try another notes document.")
-                        fail_count_read_document += 1
+                            image = PIL.Image.open(notes_documents[notes_document - 1])
+                            try:
+                                response = client.models.generate_content(
+                                    model = MODEL,
+                                    contents = [image, "Extract all text from this image exactly as it appears. Return only the extracted text with no introduction, explanation, or commentary."]
+                                )
+                                notes = response
+                                image_success = True
+                                break
+                            except Exception as e:
+                                if "503" in str(e):
+                                    logger.warning("Gemini is currently unavailable due to high demand. Please try again in a moment.")
+                                else:
+                                    logger.error("Generation failed.", exc_info=True)
+                                retry = input("Would you like to try extracting the notes again? (y/n): ").strip().lower()
+                                if retry == "n":
+                                    break
+                        except Exception:
+                            print("Notes extractions failed. Please try another notes document.")
+                            fail_count_read_document += 1
+                            break
+                    if image_success:
+                        break
+                    else:
+                        continue
             except FileNotFoundError:
                 print(f"Error: '{notes_document}.txt' not found. Please try again.")
                 fail_count_read_document += 1   
@@ -487,16 +496,17 @@ def get_notes_document() -> tuple[str, str, str, list[str]]:
                 question_weak_focus = input("Focus on weak topics? (y/n): ").strip().lower()
                 if question_weak_focus == "y":
                     ai_weak_topic_text = "Weak Topics: "
-                    cursor.execute("""
-                        SELECT questions.question_topic, responses.grade
-                        FROM sessions                                 
-                        JOIN questions ON sessions.id = questions.session_id
-                        JOIN responses ON questions.id = responses.question_id
-                        JOIN session_subjects on sessions.id = session_subjects.session_id
-                        WHERE session_subjects.subject = ?
-                        """, (subject,))
-                        
-                    for row in cursor.fetchall():
+                    
+                    rows = db.fetch_weak_topics(subject)
+
+                    if not rows:
+                        print("Could not retrieve weak topics due to a local database issue.")
+                        print("Proceeding.")
+                        weak_topics = []
+                        ai_weak_topic_text = ""
+                        continue
+
+                    for row in rows:
                         topic = row[0]
                         grade = row[1]
 
@@ -549,18 +559,18 @@ def get_notes_document() -> tuple[str, str, str, list[str]]:
         topic_averages.append((topic, avg))
 
     topic_averages.sort(key=lambda x: x[1])
-    weak_topics_unformatted = [topic for topic, avg in topic_averages[:10]]
+    weak_topics_unformatted = [topic for topic, _ in topic_averages[:MAX_WEAK_TOPICS]]
     weak_topics = "\n".join(f"- {topic}" for topic in weak_topics_unformatted)
 
     notes = "\n\n".join(all_notes)
 
     return notes, weak_topics, ai_weak_topic_text, all_subjects
 
-def run_generate() -> None:
+def run_generate(db: Database) -> None:
 
     today = datetime.now().strftime("%Y-%m-%d-%I-%M-%p")
 
-    notes, weak_topics, ai_weak_topic_text, all_subjects = get_notes_document()
+    notes, weak_topics, ai_weak_topic_text, all_subjects = get_notes_document(db)
 
     ai_instructions, question_category, question_type = get_question_type() 
 
@@ -578,9 +588,9 @@ def run_generate() -> None:
             print("Questions failed to generate. Please retry.")
             exit()
 
-    session_id = entry_sessions(question_category, question_type, difficulty, today)
-    entry_session_subjects(all_subjects, session_id)
-    entry_questions(questions, session_id)
+    session_id = db.insert_session(question_category, question_type, difficulty, today)
+    db.insert_subjects(all_subjects, session_id)
+    db.insert_questions(questions, session_id)
 
     header = f"Session ID: {session_id}\n\n"
     final_output = header + questions

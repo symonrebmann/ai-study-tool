@@ -1,4 +1,7 @@
 
+import logging
+logger = logging.getLogger(__name__)
+
 def extract_question_blocks(text: str) -> list[dict]:
     current_field = None
     blocks = []
@@ -27,6 +30,10 @@ def extract_question_blocks(text: str) -> list[dict]:
 
     if current_block:
         blocks.append(current_block)
+
+    if not blocks:
+        logger.warning("extract_question_blocks returned no blocks; check input format")
+    logger.debug(f"extract_question_blocks returned %s blocks", len(blocks))
 
     return blocks
 
@@ -65,5 +72,9 @@ def extract_response_blocks(text: str) -> list[dict] :
 
     if current_block:
         blocks.append(current_block)
+
+    if not blocks:
+        logger.warning("extract_response_blocks returned no blocks; check input format")
+    logger.debug("extract_response_blocks returned %s blocks", len(blocks))
 
     return blocks
