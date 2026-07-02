@@ -19,7 +19,7 @@ MODEL = "gemini-3.5-flash"
 #database
 
 DB_PATH = "sfk.db"
-TEST_MODE = True
+TEST_MODE = False
 
 MAX_DOCUMENTS = None
 MAX_WEAK_TOPICS = None

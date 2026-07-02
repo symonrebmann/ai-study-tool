@@ -1,6 +1,8 @@
 import pytest
 import sqlite3
 from database import Database
+import config
+config.TEST_MODE = True
 
 @pytest.fixture
 def test_db():
