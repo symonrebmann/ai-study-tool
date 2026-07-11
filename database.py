@@ -418,6 +418,8 @@ class Database:
                 WHERE question_id = ?
         """, (new_note, question_id))
 
+        self.conn.commit()
+
         return "success"
 
     #remove
@@ -436,6 +438,8 @@ class Database:
                 DELETE FROM favorites
                 WHERE question_id = ?
         """, (question_id,))
+
+        self.conn.commit()
 
         return "success"
 

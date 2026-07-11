@@ -30,7 +30,7 @@ _settings_dict = {
     "1": {
         "setting": "Max Notes Documents",
         "variable": "MAX_DOCUMENTS",
-        "value_range": "1-50"
+        "value_range": "1-10"
     },
     "2": {
         "setting": "Max Weak Topics",
@@ -74,6 +74,8 @@ def change_config(final_config: dict[str, int]) -> None:
     new_config = None
     fail_count_response = 0
 
+    new_config = final_config.copy()
+
     while fail_count_response < 3:
         response = input("Enter the corresponding number to change a setting or 'back' to go back to the main menu: ").lower().strip()
 
@@ -103,7 +105,6 @@ def change_config(final_config: dict[str, int]) -> None:
         new_value = _change_item(setting, current_value, value_range)
         if not new_value:
             return
-        new_config = final_config.copy()
         new_config[variable] = new_value
         if response == "1":
             MAX_DOCUMENTS = new_value
@@ -170,7 +171,7 @@ def _check_config(config: dict[str, int]) -> dict[str, int]:
     global FAVORITES_PER_PAGE
 
     MAX_DOCUMENTS = config.get("MAX_DOCUMENTS", 5)
-    if not isinstance(MAX_DOCUMENTS, int) or not 2 <= MAX_DOCUMENTS <= 10:
+    if not isinstance(MAX_DOCUMENTS, int) or not 1 <= MAX_DOCUMENTS <= 10:
         MAX_DOCUMENTS = 5
     MAX_WEAK_TOPICS = config.get("MAX_WEAK_TOPICS", 10)
     if not isinstance(MAX_WEAK_TOPICS, int) or not 1 <= MAX_WEAK_TOPICS <= 50:

@@ -144,7 +144,7 @@ def get_session_preview(db: Database) -> None:
                             text_subject = "Subjects: " + subjects
                         else:
                             text_subject = "Subject: " + session_list[session_response - 1]["subjects"][0]
-                        _get_full_session(session_list[session_response - 1], text_subject)
+                        _get_full_session(db, session_list[session_response - 1], text_subject)
                         break
                     else:
                         print("Invalid session. Please try again.")
