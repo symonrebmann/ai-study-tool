@@ -2,7 +2,7 @@
 from database import Database
 from datetime import datetime
 import math
-from config import FAVORITES_PER_PAGE
+import config
 
 import logging
 logger = logging.getLogger(__name__)
@@ -76,14 +76,14 @@ def _favorites_preview(db: Database, favorites_questions: list[dict]) -> None:
         favorites_questions: List of favorites dicts with question_id, date_added, note, and question
     """
 
-    page_total = math.ceil(len(favorites_questions)/FAVORITES_PER_PAGE)
+    page_total = math.ceil(len(favorites_questions)/config.FAVORITES_PER_PAGE)
 
     current_page = 1
 
     while True:
     
-        start = (current_page - 1) * FAVORITES_PER_PAGE
-        end = min(start + FAVORITES_PER_PAGE, len(favorites_questions))
+        start = (current_page - 1) * config.FAVORITES_PER_PAGE
+        end = min(start + config.FAVORITES_PER_PAGE, len(favorites_questions))
 
         print(f"Favorite Previews Page {current_page}/{page_total}")
 

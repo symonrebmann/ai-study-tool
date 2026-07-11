@@ -1,4 +1,4 @@
-
+config.SESSIONS_PER_PAGE
 import re
 import os
 import logging
@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 import pdfplumber
 from PIL import Image, UnidentifiedImageError
 from client import client
-from config import MODEL, MAX_DOCUMENTS, MAX_WEAK_TOPICS
+import config
 from database import Database
 
 _JUNK_TITLE_WORDS = {
@@ -239,7 +239,7 @@ def _read_document(filepath: str) -> tuple[str | None, str]:
                 with Image.open(filepath) as image:
                     try:
                         response = client.models.generate_content(
-                            model = MODEL,
+                            model = config.MODEL,
                             contents = [image, "Extract all text from this image exactly as it appears. Return only the extracted text with no introduction, explanation, or commentary."]
                         )
                         notes = response
@@ -381,7 +381,7 @@ def _aggregate_weak_topics(topic_groups: dict[str, list[dict[str, str | float]]]
         topic_averages.append((topic, avg))
 
     topic_averages.sort(key=lambda x: x[1])
-    weak_topics_unformatted = [topic for topic, _ in topic_averages[:MAX_WEAK_TOPICS]]
+    weak_topics_unformatted = [topic for topic, _ in topic_averages[:config.MAX_WEAK_TOPICS]]
     weak_topics = "\n".join(f"- {topic}" for topic in weak_topics_unformatted)
 
     return weak_topics
@@ -406,7 +406,7 @@ def get_session_sources(db: Database) -> tuple[str, str, str, list[str]]:
     all_notes = []
     all_subjects = []
 
-    for _ in range(MAX_DOCUMENTS):
+    for _ in range(config.MAX_DOCUMENTS):
         fail_count_notes_document = 0
         fail_count_read_document = 0
 

@@ -1,6 +1,6 @@
 from database import Database
 import math
-from config import SESSIONS_PER_PAGE
+import config
 from datetime import datetime
 
 import logging
@@ -90,14 +90,14 @@ def get_session_preview(db: Database) -> None:
     
     session_list = _get_session_list(db)
 
-    page_total = math.ceil(len(session_list)/SESSIONS_PER_PAGE)
+    page_total = math.ceil(len(session_list)/config.SESSIONS_PER_PAGE)
 
     current_page = 1
 
     while True:
     
-        start = (current_page - 1) * SESSIONS_PER_PAGE
-        end = min(start + SESSIONS_PER_PAGE, len(session_list))
+        start = (current_page - 1) * config.SESSIONS_PER_PAGE
+        end = min(start + config.SESSIONS_PER_PAGE, len(session_list))
 
         print(f"Session Previews Page {current_page}/{page_total}")
 

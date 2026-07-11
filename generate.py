@@ -1,6 +1,6 @@
 
 from client import client
-from config import MODEL
+import config
 import logging
 logger = logging.getLogger(__name__)
 from datetime import datetime
@@ -57,7 +57,7 @@ def _generate_questions(notes: str, weak_topics: str, ai_weak_topic_text: str, q
     while True:
         try:
             response = client.models.generate_content(
-                model = MODEL,
+                model = config.MODEL,
                 contents = prompt
             )
             logger.debug("Prompt length: %s chars", len(prompt))
