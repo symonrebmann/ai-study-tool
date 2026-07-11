@@ -1,14 +1,14 @@
 
 import pytest
-from analytics_function import get_stats, get_trend, generate_report
+from analytics_function import _get_stats, _get_trend, _generate_report
 
 def test_get_stats_empty():
     results = []
-    assert get_stats(results) is None
+    assert _get_stats(results) is None
 
 def test_get_stats_all_correct():
     records = [{"grade": "Correct", "score": 1}, {"grade": "Correct", "score": 1}, {"grade": "Correct", "score": 1}, {"grade": "Correct", "score": 1}, {"grade": "Correct", "score": 1}]
-    results = get_stats(records)
+    results = _get_stats(records)
     assert results is not None
     assert len(results) == 7
     assert results["total"] == 5
@@ -21,7 +21,7 @@ def test_get_stats_all_correct():
 
 def test_get_stats_mixed():
     records = [{"grade": "Correct", "score": 1}, {"grade": "Correct", "score": 1}, {"grade": "Partially Correct", "score": .5}, {"grade": "Incorrect", "score": 0}, {"grade": "Incorrect", "score": 0}]
-    results = get_stats(records)
+    results = _get_stats(records)
     assert results is not None
     assert len(results) == 7
     assert results["total"] == 5
@@ -35,22 +35,22 @@ def test_get_stats_mixed():
 
 def test_get_trend_no_change():
     records = [{"date": "2026-01-01-12-00-PM", "score": 0}, {"date": "2026-02-02-12-00-PM", "score": 0}, {"date": "2026-03-03-12-00-PM", "score": 0}, {"date": "2026-04-04-12-00-PM", "score": 0}]
-    results = get_trend(records)
+    results = _get_trend(records)
     assert results == "No Change →"
 
 def test_get_trend_improvement():
     records = [{"date": "2026-01-01-12-00-PM", "score": 0}, {"date": "2026-02-02-12-00-PM", "score": 0}, {"date": "2026-03-03-12-00-PM", "score": 1}, {"date": "2026-04-04-12-00-PM", "score": 1}]
-    results = get_trend(records)
+    results = _get_trend(records)
     assert results == "Improvement ↑"
 
 def test_get_trend_worsen():
     records = [{"date": "2026-01-01-12-00-PM", "score": 1}, {"date": "2026-02-02-12-00-PM", "score": 1}, {"date": "2026-03-03-12-00-PM", "score": 0}, {"date": "2026-04-04-12-00-PM", "score": 0}]
-    results = get_trend(records)
+    results = _get_trend(records)
     assert results == "Worsen ↓"
 
 def test_get_trend_empty():
     records = []
-    results = get_trend(records)
+    results = _get_trend(records)
     assert results == "Needs more data"
 
 def test_generate_report():
@@ -60,7 +60,7 @@ def test_generate_report():
             {"grade": "Incorrect", "score": 0.0, "date": "2026-02-02-12-00-PM"}
         ]
     }
-    result = generate_report(topic_groups)
+    result = _generate_report(topic_groups)
     assert isinstance(result, str)
     assert len(result) > 0
     assert "Weakness Ranking" in result

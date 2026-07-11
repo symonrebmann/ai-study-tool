@@ -1,7 +1,7 @@
 
 import pytest
 from database import Database
-from analytics_function import generate_report
+from analytics_function import _generate_report
 
 def test_generate_store_history(test_db, sample_session_with_responses):
 
@@ -39,7 +39,7 @@ def test_store_analytics(test_db, sample_session_with_responses):
             topic_groups[topic] = []
         topic_groups[topic].append({"date": date, "grade": grade, "score": score})
     
-    report = generate_report(topic_groups)
+    report = _generate_report(topic_groups)
     assert isinstance(report, str)
     assert "Weakness Ranking" in report
     assert len(report) > 0
@@ -71,10 +71,12 @@ def test_create_fetch_change_remove_favorite(test_db, sample_session_with_questi
     assert fetch_favorite[0][1] == "2026-06-27" #date_added
     assert fetch_favorite[0][2] == "This question is amazing" #note
 
+    question_id = [question_id]
     question = test_db.fetch_questions_for_favorites(question_id)
     assert question
     assert question[0][0] == "What is the standard slope-intercept form of a linear equation? A) y = mx + b B) y = x^2 C) a^2 + b^2 = c^2 D) E = mc^2" #question_text
 
+    question_id = question_id[0]
     new_note = "I hate this question"
     change = test_db.update_favorite_note(new_note, question_id)
     assert change == "success"

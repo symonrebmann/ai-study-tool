@@ -13,7 +13,7 @@ def test_db():
 
 @pytest.fixture
 def sample_session(test_db):
-    session_id = test_db.insert_session("Selected Response", "2. Multiple Choice", 1, "2026-06-14-04-37-PM")
+    session_id = test_db.insert_session("Selected Response", "Multiple Choice", None, 1, "2026-06-14-04-37-PM")
     test_db.insert_subjects(["math"], session_id)
     return session_id
 

@@ -106,5 +106,5 @@ def test_change_item(monkeypatch):
     current_value = 10
     value_range = "1-50"
     monkeypatch.setattr("builtins.input", lambda _: "25")
-    new_value = config.change_item(setting, current_value, value_range)
+    new_value = config._change_item(setting, current_value, value_range)
     assert new_value == 25

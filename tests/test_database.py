@@ -7,7 +7,7 @@ import pytest
 def test_insert_session_critical_handler(test_db):
     test_db.conn.close()
     with pytest.raises(Exception):
-        test_db.insert_session("Analytical", "1. Critical Analysis", 5, "2026-06-27")
+        test_db.insert_session("Analytical", "Critical Analysis", None, 5, "2026-06-27")
 
 def test_insert_favorites_error_handler(test_db):
     test_db.conn.close()
@@ -95,9 +95,10 @@ def test_fetch_sessions_scores(test_db, sample_session_with_responses):
     assert row[0] == 1 #question_number
     assert row[1] == "Correct" #grade
 
-def test_fetch_session_category(test_db, sample_session):
-    result = test_db.fetch_session_category(sample_session)
+def test_fetch_session_category_subtype(test_db, sample_session):
+    result = test_db.fetch_session_category_subtype(sample_session)
     assert result[0] == "Selected Response"
+    assert result[1] == None
 
 def test_fetch_questions(test_db, sample_session_with_questions):
     results = test_db.fetch_questions(sample_session_with_questions)
