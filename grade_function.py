@@ -3,14 +3,24 @@ from google import genai
 from dotenv import load_dotenv
 import os
 from datetime import datetime
-from database import Database
+from database import Database, fetch_subjects
 
 import logging
 logger = logging.getLogger(__name__)
 
 from client import client
 
-def grade_answers(answers: str) -> tuple[str, str]:
+def _grade_answers(answers: str) -> tuple[str, str]:
+    """Send session answers to the AI model for grading and extract results
+
+    Handles API errors with retry logic. Weak topics are extracted from the response and returned separately; returns an empty string if none are found
+    
+    Args:
+        answers: Text from a completed session document with questions and responses
+    Returns:
+        Tuple of (grading, weak_topics) where grading contains the full graded response and weak_topics contains identified weak topics, or an empty string if none
+    """
+
     prompt = f"""
     You are a study assistant. Based on these answers to the given questions please grade them.
     For each grade please give a reason and if it's a wrong answer offer what went wrong.
@@ -51,8 +61,7 @@ def grade_answers(answers: str) -> tuple[str, str]:
                 logger.error("Generation failed.", exc_info=True)
             retry = input("Would you like to try generating again? (y/n): ").strip().lower()
             if retry != 'y':
-                print("Exiting application.")
-                exit()
+                raise RuntimeError("Question generation failed.") from e
 
     parts_grade = response.text.split("Weak Topics:")
     grading = parts_grade[0]
@@ -64,159 +73,214 @@ def grade_answers(answers: str) -> tuple[str, str]:
 
     return grading, weak_topics
 
-def get_answer_document(db: Database) -> tuple[str, str]:
+def _validate_manual_entry(filename: str) -> tuple[bool, str | None]:
+    """Validate a manually entered question document filename
+    
+    Args:
+        filename: Manually entered file to validate
+    Returns:
+        Tuple of (is_valid, error_message), where error_message is empty if validation succeeds
+    """
 
-    answered_documents = []
+    extension = os.path.splitext(filename)[1]
+    if extension != ".txt":
+        return False, f"Unsupported file type: {extension}"
 
-    file_names = os.listdir(".")
+    if os.path.dirname(filename) not in {"", "."}:
+        return False, "Please enter only the filename, not a path"
+    
+    if not os.path.exists(filename):
+        return False, f"File '{filename}' not found in current directory"
+
+    if not os.access(filename, os.R_OK):
+        return False, f"Cannot read '{filename}' — check permissions"
+
+    return True, None
+
+def _confirm_document(question_document: str) -> tuple[bool, int | None, str | None]:
+    """Display a preview and ask the user to confirm the selected document
+
+    Generates preview to allow user to view document. Handles errors from input or reading document.
+
+    Args:
+        question_document: Name of document with suffix read to get answers
+    Returns:
+        Tuple of (confirmed, session_id, answers), if confirmation fails or an error occurs, session_id and answers are None
+    """
+
+    fail_count_confirm = 0
+    
+    try:
+        with open(question_document, "r") as f:
+            answers = f.read()
+
+        lines = answers.split("\n")
+        preview = "\n".join(lines[:25])
+        print("Document preview: ")
+        print(f"{preview}")
+
+        while fail_count_confirm < 3:
+            document_confirm = input("Is this the correct document? (y/n)").strip().lower()
+            if document_confirm == "y":
+                session_id = int(lines[0].replace("Session ID:", "").strip())
+                return True, session_id, answers
+            elif document_confirm == "n":
+                return False, None, None
+            else:
+                print("Invalid response. Please input a valid response (y/n).")
+                fail_count_confirm += 1
+        if fail_count_confirm >= 3:
+            print("Too many failed attempts. Exiting.")
+            exit()
+    except (FileNotFoundError, OSError) as e:
+        logger.warning("Failed to open document: %s", e)
+        print("Questions document extraction failed. Please try another notes document.")
+        return False, None, None
+    
+def _check_already_graded(db: Database, session_id: int) -> bool:
+    """Check if the selected session has already been graded
+
+    Args:
+        db: Database instance used to check database for existing session grades
+        session_id: Links answer document to database
+    Returns:
+        True if grading should continue, otherwise False
+    """
+
+    fail_count_warn = 0
+
+    count = db.check_graded(session_id)
+
+    if count is None:
+        print("Could not retrieve previous grade information due to a local database issue. Continuing on.")
+        return True
+
+    if count > 0:
+        while fail_count_warn < 3:
+            warn_response = input("Warning: This session has already been graded. Continue anyway? (y/n) ").strip().lower()
+            if warn_response == "y":
+                return True
+            elif warn_response == "n":
+                return False
+            else:
+                print("Invalid response. Please input a valid response (y/n).")
+                fail_count_warn += 1
+        if fail_count_warn >= 3:
+            print("Too many failed attempts. Exiting.")
+            exit()
+    return True
+
+def _get_session_subject(db: Database, session_id: int) -> str | None:
+    """Extract subject(s) from database
+
+    Args:
+        db: Database instance used to fetch subject(s)
+        session_id: Used to link answer document to subject(s)
+    Returns:
+        Subject(s) formatted or None if there is an error
+    """
+
+    subjects = db.fetch_subjects(session_id)
+
+    if not subjects:
+        return None
+    
+    return " ".join(subject[0] for subject in subjects)
+    
+def _get_answer_document(db: Database) -> tuple[str, str]:
+    """Prompt the user to select an answer document for grading
+
+    Displays available answer documents, supports manual entry, validates the selection, confirms the chosen document, and checks for previous grading
+    
+    Args:
+        db: Database instance to pass onto required functions
+    Returns:
+        Tuple of (answers, subject), where answers contains the full document contents
+    """
 
     fail_count_answered_document = 0
     fail_count_read_document = 0
     fail_manual_entry = 0
-    fail_count_warn = 0
     answers = None
-    already_graded_confirmed = False
-    incorrect_formatting = False
 
-    for file in file_names:
-        if "questions" in file:
-            answered_documents.append(file)
+    answered_documents = [file for file in os.listdir(".") if "questions" in file]
 
     while fail_count_answered_document < 3 and fail_count_read_document < 3:
-        answered_index = 0
+        document_count = len(answered_documents)
+
         print("Answered Questions: ")
-        for file in answered_documents:
-            answered_index +=1
-            print(f"{answered_index}. {file}")
-        print(f"{answered_index + 1}. Manual entry")
+        for i, file in enumerate(answered_documents, start = 1):
+            print(f"{i}. {file}")
+        print(f"{document_count + 1}. Manual entry")
 
         try:
             answered_document = int(input("Please choose one of the above documents by entering the corresponding number (e.g. 1, 2, 3). "))
-            if answered_document == answered_index + 1:
+            if answered_document == document_count + 1:
                 while fail_manual_entry < 3:
-                    manual_entry = input("Please enter the full name of the notes document (including the extension): ")
-                    extension = os.path.splitext(manual_entry)[1]
-                    if extension == ".txt":
+                    manual_entry = input("Please enter the full filename (including the extension): ")
+                    is_valid, manual_error = _validate_manual_entry(manual_entry)
+                    if is_valid:
                         answered_documents.append(manual_entry)
                         break
                     else:
-                        print("The file was not recognized. Please try again.")
+                        print(f"{manual_error}. Please try again")
                         fail_manual_entry += 1
                         continue
                 if fail_manual_entry >= 3:
                     print("Too many failed attempts. Please try another document.")
                     continue
-        except (ValueError, IndexError):
+        except ValueError:
             print("The document chosen was not recognized. Please try again.")
             fail_count_answered_document +=1
             continue
         try:
-            with open(f"{answered_documents[answered_document - 1]}", "r") as f:
-                answers = f.read()
-            fail_count_confirm = 0
-
-            lines = answers.split("\n")
-            preview = "\n".join(lines[:25])
-            print("Document preview: ")
-            print(f"{preview}")
-                
-            while fail_count_confirm < 3:
-                document_confirm = input("Is this the correct document? (y/n)").strip().lower()
-                if document_confirm == "y":
-                    session_id = int(lines[0].replace("Session ID:", "").strip())
-
-                    count = db.check_graded(session_id)
-
-                    if count is None:
-                        print("Could not retrieve previous grade information due to a local database issue.")
-                        count = 0
-
-                    if count > 0:
-                        while fail_count_warn < 3:
-                            warn_response = input("Warning: This session has already been graded. Continue anyway? (y/n) ").strip().lower()
-                            if warn_response == "y":
-                                name_without_suffix = os.path.splitext(answered_documents[answered_document - 1])[0]
-                                file_parts = name_without_suffix.split(" ")
-                                try:
-                                    questions_index = file_parts.index("questions")
-                                except Exception:
-                                    print("Incorrect file name format; ensure the file has not been renamed. Please try another file.")
-                                    incorrect_formatting = True
-                                    break
-                                subject = " ".join(file_parts[:questions_index])
-                                return answers, subject
-                            elif warn_response == "n":
-                                already_graded_confirmed = True
-                                break
-                            else:
-                                print("Invalid response. Please input a valid response (y/n).")
-                                fail_count_warn += 1
-                        if fail_count_warn >= 3:
-                            print("Too many failed attempts. Exiting.")
-                            exit()
-                    if not already_graded_confirmed and not incorrect_formatting:
-                        name_without_suffix = os.path.splitext(answered_documents[answered_document - 1])[0]
-                        file_parts = name_without_suffix.split(" ")
-                        try:
-                            questions_index = file_parts.index("questions")
-                        except Exception:
-                            print("Incorrect file name format; ensure the file has not been renamed. Please try another file.")
-                            fail_count_answered_document = 0
-                            fail_count_read_document = 0
-                            fail_manual_entry = 0
-                            fail_count_warn = 0
-                            answers = None
-                            already_graded_confirmed = False
-                            break
-                        subject = " ".join(file_parts[:questions_index])
-                        return answers, subject
-                    else:
-                        fail_count_answered_document = 0
-                        fail_count_read_document = 0
-                        fail_manual_entry = 0
-                        fail_count_warn = 0
-                        answers = None
-                        already_graded_confirmed = False
-                        incorrect_formatting = False
-                        break
-                elif document_confirm == "n":
-                    fail_count_answered_document = 0
-                    fail_count_read_document = 0
-                    fail_manual_entry = 0
-                    fail_count_warn = 0
-                    answers = None
-                    break
-                else:
-                    print("Invalid response. Please input a valid response (y/n).")
-                    fail_count_confirm += 1
-            if fail_count_confirm >= 3:
-                print("Too many failed attempts. Exiting.")
-                exit()
+            question_document = answered_documents[answered_document - 1]
+        except IndexError:
+            print("Chosen document not in range. Please try again.")
             continue
-        except (FileNotFoundError, OSError) as e:
-            logger.warning("Failed to open document: %s", e)
-            print("Notes extraction failed. Please try another notes document.")
-            fail_count_read_document += 1
+
+        confirmed, session_id, answers = _confirm_document(question_document)
+        if confirmed and session_id and answers:
+            continue_on = _check_already_graded(db, session_id)
+            if continue_on:
+                subject = _get_session_subject(db, session_id)
+                if not subject or len(subject) < 1:
+                    print("Please choose another document.")
+                    continue
+                return answers, subject
+            if not continue_on:
+                print("Please choose another document.")
+                continue
+        else:
+            fail_count_answered_document = 0
+            fail_count_read_document = 0
+            fail_manual_entry = 0
+            answers = None
+            continue
     if fail_count_answered_document >= 3 or fail_count_read_document >= 3:
-        print("Too many failed attempts. Exiting.")
-        exit()
-    if answers is None:
         print("Too many failed attempts. Exiting.")
         exit()
 
 def run_grade(db: Database) -> None:
+    """Orchestrate the calling of required functions and creating of graded document
+
+    Gets text and session id from graded document. Feeds AI model and gets graded version. Creates the graded and weak topic files. Insert graded and response information into database.
     
+    Args:
+        db: Database instance to pass into functions when needed to retrieve information
+    """
+
     today = datetime.now().strftime("%Y-%m-%d-%I-%M-%p")
 
-    answers, subject = get_answer_document(db)
+    answers, subject = _get_answer_document(db)
 
-    grade, weak_topics = grade_answers(answers)
+    try:
+        grade, weak_topics = _grade_answers(answers)
+    except RuntimeError as e:
+        logger.critical(e)
+        raise
 
     session_id = int(answers.split("\n")[0].replace("Session ID:", "").strip())
-
-    if grade is None:
-        print("Grade failed to generate. Please retry.")
-        exit()
 
     header = f"Session ID: {session_id}\n\n"
     final_grade_output = header + grade 
