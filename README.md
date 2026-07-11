@@ -40,18 +40,21 @@ Built with the Gemini API and a SQLite-backed analytics pipeline, and backed by 
 	```
 	pip install -r requirements.txt
 	```
-2. Set your API key
+ 2. Set your API key
   Creating a text document titled .env (keep the .txt extension) in the project root. Then, in the text document, add:
 	```
 	GEMINI_API_KEY=[your Gemini key]
 	```
- 3. Run SFK
+3. Run SFK
 	```
 	python menu.py
 	```
 You'll be prompted to generate questions, grade answers, view analytics, review session history, change favorites, or configure settings.
 
-  For note files, please keep the format somewhat simple using the format including just the subject and keywords like "notes, unit, chapter, textbook, slides" and similar keywords. As well, do not change the name of the generated questions documents; grading auto-detection relies on it (or else you'd have to use manual entry). Finally, to upload the questions for grading, write your answers in the space provided on the questions document and save it.
+4. File naming
+
+  Auto-detection matches on filename keywords (e.g. math notes.txt or chem_unit3_slides.txt). Keep note filenames to a subject plus a keyword like notes, unit, chapter, textbook, or slides. If a file isn't auto-detected, manual entry is always available.
+  Don't rename generated question documents. Grading auto-detection depends on the filename staying intact. To grade, write your answers directly in the space provided on the questions document and save it.
 
 ## Roadmap:
 
