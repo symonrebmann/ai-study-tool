@@ -1,5 +1,5 @@
 
-from generate_function import run_generate
+from generate import run_generate
 from grade_function import run_grade
 from analytics_function import run_analytics
 from database import Database
@@ -24,6 +24,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def menu() -> None:
+    """Initialize SFK and route user to their chosen feature
+
+    Initiates the database, settings config, and prompts user input to goal. Handles input errors and retry logic
+    """
 
     db = Database(DB_PATH)
     db.initiate_db()

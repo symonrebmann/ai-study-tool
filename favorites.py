@@ -7,7 +7,14 @@ from config import FAVORITES_PER_PAGE
 import logging
 logger = logging.getLogger(__name__)
 
-def get_favorites(db: Database) -> tuple[list[dict], list[int]]:
+def _get_favorites(db: Database) -> tuple[list[dict[str, any]], list[int]]:
+    """Get all the favorites and their info
+
+    Args:
+        db: Database instance used to retrieve topic grade data
+    Returns:
+        A tuple of (favorites_list, question_ids) where favorites_list contains dicts with question_id, date_added, and note and question_ids contains all question ids in favorites
+    """
 
     favorites_list = []
     question_ids = []
@@ -36,7 +43,17 @@ def get_favorites(db: Database) -> tuple[list[dict], list[int]]:
 
     return favorites_list, question_ids
 
-def get_questions(db: Database, favorites_list: list[dict], question_ids: list) -> list[dict]:
+def _get_questions(db: Database, favorites_list: list[dict[str, any]], question_ids: list[int]) -> list[dict[str, any]]:
+    """Get all the questions related to each favorite
+
+    Args:
+        db: Database instance used to retrieve favorited questions
+        favorites_list: List of favorites dicts with question_id, date_added, and note
+        question_ids: All question ids with favorites used for fetching related questions
+    Returns:
+        List of favorites dicts with question_id, date_added, note, and question
+    """
+
     questions = db.fetch_questions_for_favorites(question_ids)
 
     if len(favorites_list) != len(questions):
@@ -47,10 +64,17 @@ def get_questions(db: Database, favorites_list: list[dict], question_ids: list) 
 
     favorites_list.sort(key=lambda x: x["date_added"], reverse = True)
 
-
     return favorites_list
 
-def favorites_preview(db: Database, favorites_questions: list[dict]) -> None:
+def _favorites_preview(db: Database, favorites_questions: list[dict]) -> None:
+    """Generate a paginated preview of all favorites for viewing, editing, or removal
+
+    Displays favorites in pages, allowing user to select a favorite to change or remove. Calls exit on too many failed attempts or if the user chooses to exit.
+
+    Args:
+        db: Database instance passed on to change or remove favorite
+        favorites_questions: List of favorites dicts with question_id, date_added, note, and question
+    """
 
     page_total = math.ceil(len(favorites_questions)/FAVORITES_PER_PAGE)
 
@@ -103,10 +127,10 @@ def favorites_preview(db: Database, favorites_questions: list[dict]) -> None:
                         while fail_count_choice < 3:
                             choice = input("Please select one of the following options: change or remove?").lower().strip()
                             if choice == "change":
-                                change_favorite(db, question, question_id)
+                                _change_favorite(db, question, question_id)
                                 break
                             elif choice == "remove":
-                                remove_favorite(db, question, question_id)
+                                _remove_favorite(db, question, question_id)
                                 break
                             else:
                                 print("Answer not recognized. Please try again.")
@@ -120,7 +144,15 @@ def favorites_preview(db: Database, favorites_questions: list[dict]) -> None:
                 except ValueError:
                     print("Invalid response. Please try again.")
 
-def change_favorite(db: Database, question: str, question_id: int) -> None:
+def _change_favorite(db: Database, question: str, question_id: int) -> None:
+    """Change the note on a favorited question
+
+    Args:
+        db: Database instance used to change favorite
+        question: Text of the favorited question
+        question_id: Used to find favorite in database
+    """
+
 
     print(f"""
         Question:
@@ -136,9 +168,16 @@ def change_favorite(db: Database, question: str, question_id: int) -> None:
     else:
         print("Could not update the note due to a local database issue.")
 
-    go_again()
+    _go_again()
 
-def remove_favorite(db: Database, question: str, question_id: int) -> None:
+def _remove_favorite(db: Database, question: str, question_id: int) -> None:
+    """Remove a favorited question
+
+    Args:
+        db: Database instance used to remove favorite
+        question: Text of the favorited question
+        question_id: Used to find favorite in database
+    """
     fail_count_confirm = 0
 
     while fail_count_confirm < 3:
@@ -164,9 +203,11 @@ def remove_favorite(db: Database, question: str, question_id: int) -> None:
         print("Too many failed attempts. Exiting.")
         exit()
 
-    go_again()
+    _go_again()
 
-def go_again():
+def _go_again() -> None:
+    """Continue or stop if user wants to change or remove another favorite"""
+    
     fail_count_go_again = 0
 
     while fail_count_go_again < 3:
@@ -182,13 +223,18 @@ def go_again():
         print("Too many failed attempts. Exiting.")
         exit()
 
-def run_favorites(db: Database):
+def run_favorites(db: Database) -> None:
+    """Orchestrate the calling of required functions to preview and change or remove favorites
+    
+    Args:
+        db: Database instance used to pass onto functions
+    """
 
-    favorites_list, question_ids = get_favorites(db)
+    favorites_list, question_ids = _get_favorites(db)
 
-    favorites_questions = get_questions(db, favorites_list, question_ids)
+    favorites_questions = _get_questions(db, favorites_list, question_ids)
 
-    favorites_preview(db, favorites_questions)
+    _favorites_preview(db, favorites_questions)
 
 if __name__ == "__main__":
     run_favorites()

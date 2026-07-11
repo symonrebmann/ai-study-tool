@@ -26,7 +26,38 @@ MAX_WEAK_TOPICS = None
 SESSIONS_PER_PAGE = None
 FAVORITES_PER_PAGE = None
 
+_settings_dict = {
+    "1": {
+        "setting": "Max Notes Documents",
+        "variable": "MAX_DOCUMENTS",
+        "value_range": "1-50"
+    },
+    "2": {
+        "setting": "Max Weak Topics",
+        "variable": "MAX_WEAK_TOPICS",
+        "value_range": "1-50"
+    },
+    "3": {
+        "setting": "Sessions Per Page",
+        "variable": "SESSIONS_PER_PAGE",
+        "value_range": "1-50"
+    },
+    "4": {
+        "setting": "Favorites Per Page",
+        "variable": "FAVORITES_PER_PAGE",
+        "value_range": "1-50"
+    }
+}
+
 def change_config(final_config: dict[str, int]) -> None:
+    """Display and allow editing of user-configurable settings
+    
+    View existing settings user can change. Allows them to select, change the value, and then saves new value. Handles None returns or failed attempts by returning users to menu.
+
+    Args:
+        final_config: Dict containing the current state of the config
+    """
+
     global MAX_DOCUMENTS
     global MAX_WEAK_TOPICS
     global SESSIONS_PER_PAGE
@@ -46,23 +77,8 @@ def change_config(final_config: dict[str, int]) -> None:
     while fail_count_response < 3:
         response = input("Enter the corresponding number to change a setting or 'back' to go back to the main menu: ").lower().strip()
 
-        if response == "1":
-            setting = "Max Notes Documents"
-            variable = "MAX_DOCUMENTS"
-            value_range = "2-10"
-        elif response == "2":
-            setting = "Max Weak Topics"
-            variable = "MAX_WEAK_TOPICS"
-            value_range = "1-50"
-        elif response == "3":
-            setting = "Sessions Per Page"
-            variable = "SESSIONS_PER_PAGE"
-            value_range = "1-50"
-        elif response == "4":
-            setting = "Favorites Per Page"
-            variable = "FAVORITES_PER_PAGE"
-            value_range = "1-50"
-        elif response == "back":
+        
+        if response == "back":
             if new_config:
                 with open(CONFIG_PATH, "w") as file:
                     json.dump(new_config, file)
@@ -71,6 +87,10 @@ def change_config(final_config: dict[str, int]) -> None:
             else:
                 print("Going back to main menu.")
                 return
+        elif response in _settings_dict:
+            setting = _settings_dict[response]["setting"]
+            variable = _settings_dict[response]["variable"]
+            value_range = _settings_dict[response]["value_range"]
         else:
             print("Answer not recognized. Please try again.")
             fail_count_response += 1
@@ -80,7 +100,7 @@ def change_config(final_config: dict[str, int]) -> None:
             current_value = new_config[variable]
         else:
             current_value = final_config[variable]
-        new_value = change_item(setting, current_value, value_range)
+        new_value = _change_item(setting, current_value, value_range)
         if not new_value:
             return
         new_config = final_config.copy()
@@ -100,7 +120,18 @@ def change_config(final_config: dict[str, int]) -> None:
         print("Too many failed attempts. Exiting back to main menu.")
         return
 
-def change_item(setting: str, current_value: int, value_range = str) -> int:
+def _change_item(setting: str, current_value: int, value_range: str) -> int | None:
+    """Change one setting in the config
+    
+    Args:
+        setting: Current setting being changed
+        current_value: Current value of the setting
+        value_range: Acceptable range for new setting value
+
+    Returns:
+        New value for the setting or None if too many failed attempts
+    """
+
     print(f"The current value of {setting} is {current_value}")
 
     fail_count_change = 0
@@ -111,9 +142,12 @@ def change_item(setting: str, current_value: int, value_range = str) -> int:
             limits = value_range.split("-")
             lower_limit = int(limits[0])
             upper_limit = int(limits[1])
-            if lower_limit <= new_value and new_value <= upper_limit:
+            if lower_limit <= new_value <= upper_limit:
                 print(f"Setting successfully changed to {new_value}")
                 return new_value
+            else:
+                print(f"Please input a value from {value_range}")
+                fail_count_change += 1
         except ValueError:
             print("Please enter a number.")
             fail_count_change += 1
@@ -121,7 +155,15 @@ def change_item(setting: str, current_value: int, value_range = str) -> int:
         print("Going back to main menu.")
         return None
 
-def check_config(config: dict) -> dict[str, int]:
+def _check_config(config: dict[str, int]) -> dict[str, int]:
+    """Check that the config and it's values exist and are within the valid range
+    
+    Args:
+        config: dict with all the settings and their values
+    Returns:
+        Final config dict where all values exist and are within the valid range
+    """
+
     global MAX_DOCUMENTS
     global MAX_WEAK_TOPICS
     global SESSIONS_PER_PAGE
@@ -149,6 +191,11 @@ def check_config(config: dict) -> dict[str, int]:
     return final_config
 
 def run_config() -> dict[str, int]:
+    """Orchestrates the reading and initializing of the config json
+    
+    Returns:
+        Dict containing all settings and their values
+    """
 
     default_config = {
     "MAX_DOCUMENTS": 5,
@@ -161,16 +208,16 @@ def run_config() -> dict[str, int]:
         try:
             with open(CONFIG_PATH, "r") as file:
                 config = json.load(file)
-            final_config = check_config(config)
+            final_config = _check_config(config)
         except Exception as e:
             logger.warning("Problem loading %s, instating default settings.", CONFIG_PATH)
             with open(CONFIG_PATH, "w") as file:
                 json.dump(default_config, file)
-            final_config = check_config(default_config)
+            final_config = _check_config(default_config)
     else:
         with open(CONFIG_PATH, "w") as file:
             json.dump(default_config, file)
-        final_config = check_config(default_config)
+        final_config = _check_config(default_config)
 
     return final_config
 

@@ -3,6 +3,16 @@ import logging
 logger = logging.getLogger(__name__)
 
 def extract_question_blocks(text: str) -> list[dict]:
+    """Extract response data from a questions document
+
+    Parses a questions document to retrieve each question and its topic
+
+    Args:
+        text: Question document text to parse
+    Returns:
+        A list of dicts containing question and its topic data for each question
+    """
+
     current_field = None
     blocks = []
     current_block = {}
@@ -37,7 +47,17 @@ def extract_question_blocks(text: str) -> list[dict]:
 
     return blocks
 
-def extract_response_blocks(text: str) -> list[dict] :
+def extract_response_blocks(text: str) -> list[dict]:
+    """Extract response data from a graded document
+
+    Parses a graded document to retrieve each question's response, grade, and explanation
+
+    Args:
+        text: Graded document text to parse
+    Returns:
+        A list of dicts containing response, grade, and explanation data for each question
+    """
+
     current_field = None
     blocks = []
     current_block = {}

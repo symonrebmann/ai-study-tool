@@ -6,7 +6,15 @@ from datetime import datetime
 import logging
 logger = logging.getLogger(__name__)
 
-def get_session_list(db: Database) -> list[dict]:
+def _get_session_list(db: Database) -> list[dict[str, any]]:
+    """Get and compile all sessions and info
+    
+    Args:
+        db: Database instance used to fetch session info
+    Returns:
+        List of session dicts that contain a summary of session info
+    """
+
     session_list = []
 
     sessions = db.fetch_sessions()
@@ -71,9 +79,16 @@ def get_session_list(db: Database) -> list[dict]:
 
     return session_list
 
-def get_session_preview(db: Database):
+def get_session_preview(db: Database) -> None:
+    """Display a paginated preview of previous study sessions
+
+    Fetches session data from function, formats session summaries, and allows the user to navigate pages or select a session to view full details
     
-    session_list = get_session_list(db)
+    Args:
+        db: Database passed into required functions
+    """
+    
+    session_list = _get_session_list(db)
 
     page_total = math.ceil(len(session_list)/SESSIONS_PER_PAGE)
 
@@ -129,28 +144,42 @@ def get_session_preview(db: Database):
                             text_subject = "Subjects: " + subjects
                         else:
                             text_subject = "Subject: " + session_list[session_response - 1]["subjects"][0]
-                        get_full_session(session_list[session_response - 1], text_subject)
+                        _get_full_session(session_list[session_response - 1], text_subject)
                         break
                     else:
                         print("Invalid session. Please try again.")
                 except ValueError:
                     print("Invalid response. Please try again.")
 
-def get_full_session(db: Database, session_prev: dict[str, any], text_subject: str):
+def _get_full_session(db: Database, session_prev: dict[str, any], text_subject: str) -> None:
+    """Display a detailed view of a selected study session
+
+    Uses session data from the database and the session preview to display questions, responses, grades, and explanations. Allows the user to add questions to their favorites
+
+    Args:
+        db: Database used to retrieve session details
+        session_prev: Dict containing selected session info summary
+        text_subject: Formatted str to display subject(s) for the selected session
+    """
+
+    subtype_addon = ""
 
     session = session_prev
     session_id = session["session_id"]
     
-    category_row = db.fetch_session_category(session_id)
+    category_subtype_row = db.fetch_session_category_subtype(session_id)
 
-    if not category_row:
+    if not category_subtype_row:
         logger.warning("Failed to fetch question category for session %s.", session_id)
         print("Could not load session data. Please try another session.")
         return
     
-    category = category_row[0]
+    category = category_subtype_row[0]
+    subtype = category_subtype_row[1]
 
     session["question_category"] = category
+    if subtype:
+        subtype_addon = f" — {subtype}"
 
     question_info = db.fetch_questions(session_id)
     
@@ -193,7 +222,7 @@ def get_full_session(db: Database, session_prev: dict[str, any], text_subject: s
     {session["date"]}
     Session ID: {session["session_id"]}
     Subjects: {text_subject}
-    Question Type: {session["question_category"]} — {session["question_type"]}
+    Question Type: {session["question_category"]} — {session["question_type"]}{subtype_addon}
     Difficulty: {session["difficulty"]}
     Questions: {session["total_questions"]}
     Grade: {session["grade"]}
@@ -214,7 +243,7 @@ def get_full_session(db: Database, session_prev: dict[str, any], text_subject: s
     while fail_count_add_fav < 3:
         add_fav = input("Would you like to add a question to your favorites? (y/n) ").lower().strip()
         if add_fav == "y":
-            add_favorite(db, question_ids)
+            _add_favorite(db, question_ids)
             break
         elif add_fav == "n":
             break
@@ -239,7 +268,15 @@ def get_full_session(db: Database, session_prev: dict[str, any], text_subject: s
         print("Too many failed attempts. Exiting.")
         exit()
 
-def add_favorite(db: Database, question_ids: list[int]) -> None:
+def _add_favorite(db: Database, question_ids: list[int]) -> None:
+    """Prompts user to input favorite
+
+    Uses user input to identify a question, checks whether the question is already favorited, and adds the favorite to the database. Handles invalid input and retry attempts
+
+    Args:
+        db: Database used to input and check favorites
+        question_ids: All question ids used to link selected question to favorite in database
+    """
 
     while True:
         fail_count_favorite = 0
