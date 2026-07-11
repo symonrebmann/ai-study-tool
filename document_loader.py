@@ -1,4 +1,4 @@
-config.SESSIONS_PER_PAGE
+
 import re
 import os
 import logging
