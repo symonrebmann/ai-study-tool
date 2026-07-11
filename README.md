@@ -70,7 +70,7 @@ You'll be prompted to generate questions, grade answers, view analytics, review 
 - Configurable settings — JSON-backed, editable at runtime ✓
 - Infrastructure — Database class with dependency injection, module-based logging, automated pytest suite, GitHub Actions CI ✓
 
-### Phase 3: Terminal Experience — In Progress
+### Phase 3: Experience — In Progress
 
 - Draft mode (ungraded, exploratory) vs. Active Recall mode (strict, graded) — distinct psychological framing, not just a difficulty toggle
 - Tutor tone setting — adjusts system prompt per session
@@ -89,7 +89,7 @@ You'll be prompted to generate questions, grade answers, view analytics, review 
 - Multi-provider abstraction — Gemini, Claude, GPT-4 swappable behind a common interface
 - Web frontend (React + FastAPI), migrating SQLite to PostgreSQL if scale demands it
 
-### Phase 6: Beyond
+### Phase 6: Social
 
 - Peer teaching mode — user explains a concept to the AI, which grades the explanation
 - Multi-model consensus grading — same answer graded by two models, disagreement flagged as a confidence signal
