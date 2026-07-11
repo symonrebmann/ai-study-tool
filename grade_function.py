@@ -3,7 +3,7 @@ from google import genai
 from dotenv import load_dotenv
 import os
 from datetime import datetime
-from database import Database, fetch_subjects
+from database import Database
 
 import logging
 logger = logging.getLogger(__name__)
