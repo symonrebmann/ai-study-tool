@@ -61,7 +61,7 @@ def _generate_questions(notes: str, weak_topics: str, ai_weak_topic_text: str, q
                 contents = prompt
             )
             logger.debug("Prompt length: %s chars", len(prompt))
-            return response
+            return response.text
         except Exception as e:
             if "503" in str(e):
                 logger.warning("Gemini is currently unavailable due to high demand. Please try again in a moment.")
@@ -117,8 +117,13 @@ def _create_questions_file(session_id: int, questions: str, all_subjects: list[s
     else:
         subjects = all_subjects[0]
 
-    with open(f"{subjects} questions {today}.txt", "w") as f:
-        f.write(final_output)
+    try:
+        with open(f"{subjects} questions {today}.txt", "w", encoding="utf-8") as f:
+            f.write(final_output)
+    except Exception as e:
+        logger.critical("Unable to create questions file due to error %s", e, exc_info = True)
+        exit()
+
     print(f"Questions saved to '{subjects} questions {today}.txt'")
 
 def run_generate(db: Database) -> None:

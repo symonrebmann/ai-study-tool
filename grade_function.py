@@ -111,7 +111,7 @@ def _confirm_document(question_document: str) -> tuple[bool, int | None, str | N
     fail_count_confirm = 0
     
     try:
-        with open(question_document, "r") as f:
+        with open(question_document, "r", encoding="utf-8") as f:
             answers = f.read()
 
         lines = answers.split("\n")
@@ -287,14 +287,22 @@ def run_grade(db: Database) -> None:
 
     db.insert_responses(grade, session_id)
 
-    with open(f"graded {subject} answers {today}.txt", "w") as f:
-        f.write(final_grade_output)
-        print(f"Grades saved to 'graded {subject} answers {today}.txt'")
+    try:
+        with open(f"graded {subject} answers {today}.txt", "w", encoding="utf-8") as f:
+            f.write(final_grade_output)
+    except Exception as e:
+        logger.critical("Unable to create graded file due to error %s", e, exc_info = True)
+        exit()
+    
+    print(f"Grades saved to 'graded {subject} answers {today}.txt'")
 
     if len(weak_topics) > 1 and len(weak_topics.strip()) > 5:
-        with open(f"weak {subject} topics {today}.txt", "w") as f:
-            f.write(weak_topics)
-        print(f"Weak topics saved to 'weak {subject} topics {today}.txt'")
+        try:
+            with open(f"weak {subject} topics {today}.txt", "w", encoding="utf-8") as f:
+                f.write(weak_topics)
+            print(f"Weak topics saved to 'weak {subject} topics {today}.txt'")
+        except Exception as e:
+            logger.error("Unable to create weak topics file due to error %s", e, exc_info = True)
     else:
         print("No weak topics found.")
 

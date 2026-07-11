@@ -110,6 +110,17 @@ _JUNK_TITLE_WORDS = {
     "on",
 }
 
+_JUNK_TITLE_WORDS_EXPANDED = _JUNK_TITLE_WORDS | {_pluralize(w) for w in _JUNK_TITLE_WORDS}
+
+def _pluralize(word: str) -> str:
+    """Generate a naive plural form for junk-word matching"""
+    if word.endswith(("s", "x", "ch", "sh")):
+        return word + "es"
+    elif word.endswith("y") and len(word) > 1 and word[-2] not in "aeiou":
+        return word[:-1] + "ies"
+    else:
+        return word + "s"
+
 def _discover_documents() -> list[str]:
     """Discover notes documents from os
     
@@ -211,7 +222,7 @@ def _read_document(filepath: str) -> tuple[str | None, str]:
 
     if extension == ".txt":
         try:
-            with open(filepath, "r") as f:
+            with open(filepath, "r", encoding="utf-8") as f:
                 notes = f.read()
             return notes, ""
         except (FileNotFoundError, OSError) as e:
@@ -242,7 +253,7 @@ def _read_document(filepath: str) -> tuple[str | None, str]:
                             model = config.MODEL,
                             contents = [image, "Extract all text from this image exactly as it appears. Return only the extracted text with no introduction, explanation, or commentary."]
                         )
-                        notes = response
+                        notes = response.text
                         image_success = True
                         break
                     except Exception as e:
@@ -283,7 +294,7 @@ def _get_subject(name: str) -> str:
 
         part = part.lower()
 
-        if part in _JUNK_TITLE_WORDS:
+        if part in _JUNK_TITLE_WORDS_EXPANDED:
             continue
 
         if part.isdigit():
@@ -429,6 +440,7 @@ def get_session_sources(db: Database) -> tuple[str, str, str, list[str]]:
                 fail_count_read_document += 1
                 print(f"{error} Please try another document.")
                 continue
+            break
         if fail_count_notes_document >= 3 or fail_count_read_document >= 3:
             print("Too many failed attempts. Exiting.")
             exit()

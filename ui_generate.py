@@ -130,7 +130,7 @@ def _select_question_amount(question_max: int, question_topic: bool, topic_max: 
 
     while fail_count < 3:
         try:
-            question_amount = int(input(f"How many questions would you like? (1 - {question_max})"))
+            question_amount = int(input(f"How many questions would you like? (1 - {question_max}): "))
             if question_topic:
                 topic_amount = int(input(f"How many essay topics would you like to be able to choose from (per question)? (1 - {topic_max}) "))
             if question_amount > question_max:
