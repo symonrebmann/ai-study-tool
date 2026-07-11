@@ -36,13 +36,20 @@ Built with the Gemini API and a SQLite-backed analytics pipeline, and backed by 
 
 ## Setup & Usage:
 
-  You first need to install the required libraries. You can do this by running the following in your terminal:
+1. Install dependencies
 	```
 	pip install -r requirements.txt
 	```
-  You will then need to create an environmental variable. You can do this by creating a text document titled .env (you can have the .txt extension) in the folder. Then, in the text document, type "GEMINI_API_KEY=[your Gemini key]."
-
-  Finally, in your terminal, run: "python menu.py". From there, you will be asked if you'd like to generate questions, grade your answers, generate analytics, or view session history.
+2. Set your API key
+  Creating a text document titled .env (keep the .txt extension) in the project root. Then, in the text document, add:
+	```
+	GEMINI_API_KEY=[your Gemini key]
+	```
+ 3. Run SFK
+	```
+	python menu.py
+	```
+You'll be prompted to generate questions, grade answers, view analytics, review session history, change favorites, or configure settings.
 
   For note files, please keep the format somewhat simple using the format including just the subject and keywords like "notes, unit, chapter, textbook, slides" and similar keywords. As well, do not change the name of the generated questions documents; grading auto-detection relies on it (or else you'd have to use manual entry). Finally, to upload the questions for grading, write your answers in the space provided on the questions document and save it.
 
