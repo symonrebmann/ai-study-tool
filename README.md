@@ -54,7 +54,7 @@ You'll be prompted to generate questions, grade answers, view analytics, review 
 4. File naming
 
   Auto-detection matches on filename keywords (e.g. math notes.txt or chem_unit3_slides.txt). Keep note filenames to a subject plus a keyword like notes, unit, chapter, textbook, or slides. If a file isn't auto-detected, manual entry is always available.
-  Don't rename generated question documents. Grading auto-detection depends on the filename staying intact. To grade, write your answers directly in the space provided on the questions document and save it.
+  As well, don't rename generated question documents. Grading auto-detection depends on the filename staying intact. To grade, write your answers directly in the space provided on the questions document and save it.
 
 ## Roadmap:
 
