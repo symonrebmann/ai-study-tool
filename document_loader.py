@@ -110,8 +110,6 @@ _JUNK_TITLE_WORDS = {
     "on",
 }
 
-_JUNK_TITLE_WORDS_EXPANDED = _JUNK_TITLE_WORDS | {_pluralize(w) for w in _JUNK_TITLE_WORDS}
-
 def _pluralize(word: str) -> str:
     """Generate a naive plural form for junk-word matching"""
     if word.endswith(("s", "x", "ch", "sh")):
@@ -120,6 +118,8 @@ def _pluralize(word: str) -> str:
         return word[:-1] + "ies"
     else:
         return word + "s"
+
+_JUNK_TITLE_WORDS_EXPANDED = _JUNK_TITLE_WORDS | {_pluralize(w) for w in _JUNK_TITLE_WORDS}
 
 def _discover_documents() -> list[str]:
     """Discover notes documents from os
